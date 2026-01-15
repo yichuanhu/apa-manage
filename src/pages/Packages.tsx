@@ -125,9 +125,47 @@ export default function Packages() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  // 版本号比较函数
+  const compareVersions = (v1: string, v2: string): number => {
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+    const maxLen = Math.max(parts1.length, parts2.length);
+    
+    for (let i = 0; i < maxLen; i++) {
+      const p1 = parts1[i] || 0;
+      const p2 = parts2[i] || 0;
+      if (p1 > p2) return 1;
+      if (p1 < p2) return -1;
+    }
+    return 0;
+  };
+
+  // 获取同名安装包的最高版本
+  const getMaxVersion = (packageName: string): string | null => {
+    const sameNamePackages = packages.filter(p => p.name === packageName);
+    if (sameNamePackages.length === 0) return null;
+    
+    return sameNamePackages.reduce((maxVer, pkg) => {
+      return compareVersions(pkg.version, maxVer) > 0 ? pkg.version : maxVer;
+    }, sameNamePackages[0].version);
+  };
+
   const handleAdd = async () => {
     if (!formData.name || !formData.version || !selectedFile) {
       toast.error('请填写所有必填字段并选择文件');
+      return;
+    }
+
+    // 验证版本号格式
+    if (!/^\d+(\.\d+)*$/.test(formData.version)) {
+      toast.error('版本号格式无效，请使用数字和点分隔（如 1.0.0）');
+      return;
+    }
+
+    // 验证版本号必须递增
+    const maxVersion = getMaxVersion(formData.name);
+    if (maxVersion && compareVersions(formData.version, maxVersion) <= 0) {
+      toast.error(`版本号必须大于当前最高版本 ${maxVersion}`);
       return;
     }
 
@@ -185,6 +223,30 @@ export default function Packages() {
 
   const handleEdit = async () => {
     if (!selectedPackage) return;
+
+    // 验证版本号格式
+    if (!/^\d+(\.\d+)*$/.test(formData.version)) {
+      toast.error('版本号格式无效，请使用数字和点分隔（如 1.0.0）');
+      return;
+    }
+
+    // 如果版本号变更，验证必须递增
+    if (formData.version !== selectedPackage.version) {
+      const sameNamePackages = packages.filter(
+        p => p.name === formData.name && p.id !== selectedPackage.id
+      );
+      const maxVersion = sameNamePackages.length > 0
+        ? sameNamePackages.reduce((maxVer, pkg) => 
+            compareVersions(pkg.version, maxVer) > 0 ? pkg.version : maxVer, 
+            sameNamePackages[0].version
+          )
+        : null;
+      
+      if (maxVersion && compareVersions(formData.version, maxVersion) <= 0) {
+        toast.error(`版本号必须大于当前最高版本 ${maxVersion}`);
+        return;
+      }
+    }
 
     setSubmitting(true);
     try {
