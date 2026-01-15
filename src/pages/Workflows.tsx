@@ -53,7 +53,139 @@ interface Workflow {
   updated_at: string;
 }
 
+interface FormData {
+  title: string;
+  description: string;
+  markdown_content: string;
+  is_public: boolean;
+}
+
 const MAX_VIDEO_SIZE = 200 * 1024 * 1024; // 200MB
+
+const formatFileSize = (bytes: number | null): string => {
+  if (!bytes) return '-';
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+interface WorkflowFormProps {
+  isEdit?: boolean;
+  formData: FormData;
+  setFormData: React.Dispatch<React.SetStateAction<FormData>>;
+  selectedVideo: File | null;
+  selectedWorkflow: Workflow | null;
+  videoInputRef: React.RefObject<HTMLInputElement>;
+  handleVideoChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  uploadProgress: number;
+}
+
+const WorkflowForm = ({
+  isEdit = false,
+  formData,
+  setFormData,
+  selectedVideo,
+  selectedWorkflow,
+  videoInputRef,
+  handleVideoChange,
+  uploadProgress,
+}: WorkflowFormProps) => (
+  <div className="space-y-4">
+    <div className="space-y-2">
+      <Label htmlFor="title">标题</Label>
+      <Input
+        id="title"
+        value={formData.title}
+        onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
+      />
+    </div>
+    <div className="space-y-2">
+      <Label htmlFor="description">描述</Label>
+      <Input
+        id="description"
+        value={formData.description}
+        onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+      />
+    </div>
+    <div className="space-y-2">
+      <Label htmlFor="video">视频文件 (MP4, 最大 200MB)</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          id="video"
+          type="file"
+          accept="video/mp4,.mp4"
+          ref={videoInputRef}
+          onChange={handleVideoChange}
+          className="hidden"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => videoInputRef.current?.click()}
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          选择视频
+        </Button>
+        {selectedVideo && (
+          <span className="text-sm text-muted-foreground">
+            {selectedVideo.name} ({formatFileSize(selectedVideo.size)})
+          </span>
+        )}
+        {isEdit && !selectedVideo && selectedWorkflow?.video_path && (
+          <span className="text-sm text-muted-foreground flex items-center">
+            <Video className="mr-1 h-4 w-4" />
+            已有视频 ({formatFileSize(selectedWorkflow.video_size)})
+          </span>
+        )}
+      </div>
+    </div>
+    <div className="space-y-2">
+      <Label htmlFor="markdown">Markdown 内容</Label>
+      <Tabs defaultValue="edit">
+        <TabsList className="mb-2">
+          <TabsTrigger value="edit">编辑</TabsTrigger>
+          <TabsTrigger value="preview">预览</TabsTrigger>
+        </TabsList>
+        <TabsContent value="edit">
+          <Textarea
+            id="markdown"
+            className="min-h-[200px] font-mono"
+            placeholder="# 流程说明&#10;&#10;在这里输入 Markdown 格式的内容..."
+            value={formData.markdown_content}
+            onChange={(e) => setFormData((prev) => ({ ...prev, markdown_content: e.target.value }))}
+          />
+        </TabsContent>
+        <TabsContent value="preview">
+          <div className="min-h-[200px] p-4 border rounded-md prose prose-sm max-w-none dark:prose-invert">
+            {formData.markdown_content ? (
+              <ReactMarkdown>{formData.markdown_content}</ReactMarkdown>
+            ) : (
+              <p className="text-muted-foreground">无内容可预览</p>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+    <div className="flex items-center space-x-2">
+      <Switch
+        id="is_public"
+        checked={formData.is_public}
+        onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, is_public: checked }))}
+      />
+      <Label htmlFor="is_public">公开（无需登录即可访问）</Label>
+    </div>
+    {uploadProgress > 0 && (
+      <div className="space-y-2">
+        <Progress value={uploadProgress} />
+        <p className="text-sm text-muted-foreground text-center">
+          上传中... {uploadProgress}%
+        </p>
+      </div>
+    )}
+  </div>
+);
 
 export default function Workflows() {
   const { user } = useAuth();
@@ -124,14 +256,6 @@ export default function Workflows() {
     }
   };
 
-  const formatFileSize = (bytes: number | null): string => {
-    if (!bytes) return '-';
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
 
   const handleAdd = async () => {
     if (!formData.title) {
@@ -350,101 +474,6 @@ export default function Workflows() {
     );
   }
 
-  const WorkflowForm = ({ isEdit = false }: { isEdit?: boolean }) => (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="title">标题</Label>
-        <Input
-          id="title"
-          value={formData.title}
-          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="description">描述</Label>
-        <Input
-          id="description"
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="video">视频文件 (MP4, 最大 200MB)</Label>
-        <div className="flex items-center gap-2">
-          <Input
-            id="video"
-            type="file"
-            accept="video/mp4,.mp4"
-            ref={videoInputRef}
-            onChange={handleVideoChange}
-            className="hidden"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => videoInputRef.current?.click()}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            选择视频
-          </Button>
-          {selectedVideo && (
-            <span className="text-sm text-muted-foreground">
-              {selectedVideo.name} ({formatFileSize(selectedVideo.size)})
-            </span>
-          )}
-          {isEdit && !selectedVideo && selectedWorkflow?.video_path && (
-            <span className="text-sm text-muted-foreground flex items-center">
-              <Video className="mr-1 h-4 w-4" />
-              已有视频 ({formatFileSize(selectedWorkflow.video_size)})
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="markdown">Markdown 内容</Label>
-        <Tabs defaultValue="edit">
-          <TabsList className="mb-2">
-            <TabsTrigger value="edit">编辑</TabsTrigger>
-            <TabsTrigger value="preview">预览</TabsTrigger>
-          </TabsList>
-          <TabsContent value="edit">
-            <Textarea
-              id="markdown"
-              className="min-h-[200px] font-mono"
-              placeholder="# 流程说明&#10;&#10;在这里输入 Markdown 格式的内容..."
-              value={formData.markdown_content}
-              onChange={(e) => setFormData({ ...formData, markdown_content: e.target.value })}
-            />
-          </TabsContent>
-          <TabsContent value="preview">
-            <div className="min-h-[200px] p-4 border rounded-md prose prose-sm max-w-none dark:prose-invert">
-              {formData.markdown_content ? (
-                <ReactMarkdown>{formData.markdown_content}</ReactMarkdown>
-              ) : (
-                <p className="text-muted-foreground">无内容可预览</p>
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
-      <div className="flex items-center space-x-2">
-        <Switch
-          id="is_public"
-          checked={formData.is_public}
-          onCheckedChange={(checked) => setFormData({ ...formData, is_public: checked })}
-        />
-        <Label htmlFor="is_public">公开（无需登录即可访问）</Label>
-      </div>
-      {uploadProgress > 0 && (
-        <div className="space-y-2">
-          <Progress value={uploadProgress} />
-          <p className="text-sm text-muted-foreground text-center">
-            上传中... {uploadProgress}%
-          </p>
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <div className="space-y-6">
@@ -560,7 +589,15 @@ export default function Workflows() {
             <DialogTitle>创建流程</DialogTitle>
             <DialogDescription>创建新的流程文档</DialogDescription>
           </DialogHeader>
-          <WorkflowForm />
+          <WorkflowForm
+            formData={formData}
+            setFormData={setFormData}
+            selectedVideo={selectedVideo}
+            selectedWorkflow={selectedWorkflow}
+            videoInputRef={videoInputRef}
+            handleVideoChange={handleVideoChange}
+            uploadProgress={uploadProgress}
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
               取消
@@ -580,7 +617,16 @@ export default function Workflows() {
             <DialogTitle>编辑流程</DialogTitle>
             <DialogDescription>修改流程信息</DialogDescription>
           </DialogHeader>
-          <WorkflowForm isEdit />
+          <WorkflowForm
+            isEdit
+            formData={formData}
+            setFormData={setFormData}
+            selectedVideo={selectedVideo}
+            selectedWorkflow={selectedWorkflow}
+            videoInputRef={videoInputRef}
+            handleVideoChange={handleVideoChange}
+            uploadProgress={uploadProgress}
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               取消
