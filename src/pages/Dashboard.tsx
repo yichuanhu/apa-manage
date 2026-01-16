@@ -3,13 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Users, Package, Workflow, Shield } from 'lucide-react';
 
 export default function Dashboard() {
-  const { profile, userRoles } = useAuth();
-
-  const getRoleDisplay = () => {
-    if (userRoles.length === 0) return '无角色';
-    const roleNames = userRoles.map(r => r === 'admin' ? '管理员' : '普通用户');
-    return roleNames.join('、');
-  };
+  const { profile, userRole } = useAuth();
 
   const stats = [
     {
@@ -43,7 +37,7 @@ export default function Dashboard() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">仪表板</h1>
         <p className="text-muted-foreground">
-          欢迎回来，{profile?.username || '用户'}！当前角色：{getRoleDisplay()}
+          欢迎回来，{profile?.username || '用户'}！当前角色：{userRole === 'admin' ? '管理员' : '普通用户'}
         </p>
       </div>
 

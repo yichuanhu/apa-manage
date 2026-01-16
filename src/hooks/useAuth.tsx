@@ -3,13 +3,11 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import CryptoJS from 'crypto-js';
 
-type AppRole = 'admin' | 'user';
-
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  userRoles: AppRole[];
+  userRole: 'admin' | 'user' | null;
   profile: {
     id: string;
     username: string;
@@ -20,7 +18,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, username: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
-  hasRole: (role: AppRole) => boolean;
+  hasRole: (role: 'admin' | 'user') => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,21 +32,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userRoles, setUserRoles] = useState<AppRole[]>([]);
+  const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null);
   const [profile, setProfile] = useState<AuthContextType['profile']>(null);
 
   const fetchUserData = async (userId: string) => {
     try {
-      // 获取用户所有角色
-      const { data: rolesData } = await supabase
+      // 获取用户角色
+      const { data: roleData } = await supabase
         .from('user_roles')
         .select('role')
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .maybeSingle();
       
-      if (rolesData && rolesData.length > 0) {
-        setUserRoles(rolesData.map(r => r.role as AppRole));
-      } else {
-        setUserRoles([]);
+      if (roleData) {
+        setUserRole(roleData.role as 'admin' | 'user');
       }
 
       // 获取用户档案
@@ -85,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             fetchUserData(session.user.id);
           }, 0);
         } else {
-          setUserRoles([]);
+          setUserRole(null);
           setProfile(null);
         }
         
@@ -144,14 +141,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
-    setUserRoles([]);
+    setUserRole(null);
     setProfile(null);
   };
 
-  const hasRole = (role: AppRole): boolean => {
-    // admin 角色自动拥有 user 权限
-    if (role === 'user') return userRoles.includes('admin') || userRoles.includes('user');
-    return userRoles.includes(role);
+  const hasRole = (role: 'admin' | 'user'): boolean => {
+    if (role === 'user') return userRole === 'admin' || userRole === 'user';
+    return userRole === role;
   };
 
   return (
@@ -160,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         loading,
-        userRoles,
+        userRole,
         profile,
         signIn,
         signUp,

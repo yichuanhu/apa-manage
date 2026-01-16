@@ -38,12 +38,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { Loader2, Plus, Pencil, Trash2, Search } from 'lucide-react';
 import CryptoJS from 'crypto-js';
-
-type AppRole = 'admin' | 'user';
 
 interface User {
   id: string;
@@ -52,7 +49,7 @@ interface User {
   email: string;
   status: string;
   created_at: string;
-  roles: AppRole[];
+  role?: 'admin' | 'user';
 }
 
 export default function Users() {
@@ -67,7 +64,7 @@ export default function Users() {
     username: '',
     email: '',
     password: '',
-    roles: ['user'] as AppRole[],
+    role: 'user' as 'admin' | 'user',
     status: 'active',
   });
   const [submitting, setSubmitting] = useState(false);
@@ -87,17 +84,11 @@ export default function Users() {
         .from('user_roles')
         .select('user_id, role');
 
-      // 构建用户ID到角色数组的映射
-      const roleMap = new Map<string, AppRole[]>();
-      roles?.forEach(r => {
-        const existing = roleMap.get(r.user_id) || [];
-        existing.push(r.role as AppRole);
-        roleMap.set(r.user_id, existing);
-      });
+      const roleMap = new Map(roles?.map(r => [r.user_id, r.role]));
 
       const usersWithRoles = profiles?.map(p => ({
         ...p,
-        roles: roleMap.get(p.user_id) || [],
+        role: roleMap.get(p.user_id) as 'admin' | 'user' | undefined,
       })) || [];
 
       setUsers(usersWithRoles);
@@ -116,11 +107,6 @@ export default function Users() {
   const handleAdd = async () => {
     if (!formData.email || !formData.password || !formData.username) {
       toast.error('请填写所有必填字段');
-      return;
-    }
-
-    if (formData.roles.length === 0) {
-      toast.error('请至少选择一个角色');
       return;
     }
 
@@ -143,28 +129,18 @@ export default function Users() {
       if (error) throw error;
 
       if (data.user) {
-        // 删除默认的 user 角色，然后插入选中的角色
-        await supabase
-          .from('user_roles')
-          .delete()
-          .eq('user_id', data.user.id);
-
-        // 插入所有选中的角色
-        const roleInserts = formData.roles.map(role => ({
-          user_id: data.user!.id,
-          role,
-        }));
-
-        const { error: roleError } = await supabase
-          .from('user_roles')
-          .insert(roleInserts);
-
-        if (roleError) throw roleError;
+        // 更新用户角色（如果不是默认的user）
+        if (formData.role === 'admin') {
+          await supabase
+            .from('user_roles')
+            .update({ role: 'admin' })
+            .eq('user_id', data.user.id);
+        }
       }
 
       toast.success('用户创建成功');
       setIsAddDialogOpen(false);
-      setFormData({ username: '', email: '', password: '', roles: ['user'], status: 'active' });
+      setFormData({ username: '', email: '', password: '', role: 'user', status: 'active' });
       fetchUsers();
     } catch (error: any) {
       console.error('Error creating user:', error);
@@ -176,11 +152,6 @@ export default function Users() {
 
   const handleEdit = async () => {
     if (!selectedUser) return;
-
-    if (formData.roles.length === 0) {
-      toast.error('请至少选择一个角色');
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -195,21 +166,11 @@ export default function Users() {
 
       if (profileError) throw profileError;
 
-      // 先删除该用户的所有角色
-      await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', selectedUser.user_id);
-
-      // 插入新的角色
-      const roleInserts = formData.roles.map(role => ({
-        user_id: selectedUser.user_id,
-        role,
-      }));
-
+      // 更新用户角色
       const { error: roleError } = await supabase
         .from('user_roles')
-        .insert(roleInserts);
+        .update({ role: formData.role })
+        .eq('user_id', selectedUser.user_id);
 
       if (roleError) throw roleError;
 
@@ -257,21 +218,10 @@ export default function Users() {
       username: user.username,
       email: user.email,
       password: '',
-      roles: user.roles.length > 0 ? user.roles : ['user'],
+      role: user.role || 'user',
       status: user.status,
     });
     setIsEditDialogOpen(true);
-  };
-
-  const toggleRole = (role: AppRole) => {
-    setFormData(prev => {
-      const hasRole = prev.roles.includes(role);
-      if (hasRole) {
-        return { ...prev, roles: prev.roles.filter(r => r !== role) };
-      } else {
-        return { ...prev, roles: [...prev.roles, role] };
-      }
-    });
   };
 
   const openDeleteDialog = (user: User) => {
@@ -345,16 +295,9 @@ export default function Users() {
                     <TableCell className="font-medium">{user.username}</TableCell>
                     <TableCell>{user.email}</TableCell>
                     <TableCell>
-                      <div className="flex gap-1 flex-wrap">
-                        {user.roles.map(role => (
-                          <Badge key={role} variant={role === 'admin' ? 'default' : 'secondary'}>
-                            {role === 'admin' ? '管理员' : '用户'}
-                          </Badge>
-                        ))}
-                        {user.roles.length === 0 && (
-                          <Badge variant="outline">无角色</Badge>
-                        )}
-                      </div>
+                      <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                        {user.role === 'admin' ? '管理员' : '用户'}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge variant={user.status === 'active' ? 'default' : 'destructive'}>
@@ -423,29 +366,21 @@ export default function Users() {
               />
             </div>
             <div className="space-y-2">
-              <Label>角色</Label>
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="add-role-user"
-                    checked={formData.roles.includes('user')}
-                    onCheckedChange={() => toggleRole('user')}
-                  />
-                  <Label htmlFor="add-role-user" className="font-normal cursor-pointer">
-                    用户
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="add-role-admin"
-                    checked={formData.roles.includes('admin')}
-                    onCheckedChange={() => toggleRole('admin')}
-                  />
-                  <Label htmlFor="add-role-admin" className="font-normal cursor-pointer">
-                    管理员
-                  </Label>
-                </div>
-              </div>
+              <Label htmlFor="add-role">角色</Label>
+              <Select
+                value={formData.role}
+                onValueChange={(value: 'admin' | 'user') =>
+                  setFormData({ ...formData, role: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">用户</SelectItem>
+                  <SelectItem value="admin">管理员</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
@@ -486,29 +421,21 @@ export default function Users() {
               />
             </div>
             <div className="space-y-2">
-              <Label>角色</Label>
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="edit-role-user"
-                    checked={formData.roles.includes('user')}
-                    onCheckedChange={() => toggleRole('user')}
-                  />
-                  <Label htmlFor="edit-role-user" className="font-normal cursor-pointer">
-                    用户
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="edit-role-admin"
-                    checked={formData.roles.includes('admin')}
-                    onCheckedChange={() => toggleRole('admin')}
-                  />
-                  <Label htmlFor="edit-role-admin" className="font-normal cursor-pointer">
-                    管理员
-                  </Label>
-                </div>
-              </div>
+              <Label htmlFor="edit-role">角色</Label>
+              <Select
+                value={formData.role}
+                onValueChange={(value: 'admin' | 'user') =>
+                  setFormData({ ...formData, role: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">用户</SelectItem>
+                  <SelectItem value="admin">管理员</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-status">状态</Label>
