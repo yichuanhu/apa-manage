@@ -38,7 +38,7 @@ import {
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Loader2, Plus, Pencil, Trash2, Search, Eye, Upload, Video, Image, Package } from 'lucide-react';
+import { Loader2, Plus, Pencil, Trash2, Search, Eye, Upload, Video, Image, Package, Download } from 'lucide-react';
 
 interface Workflow {
   id: string;
@@ -767,10 +767,26 @@ export default function Workflows() {
                     </TableCell>
                     <TableCell>
                       {workflow.package_path ? (
-                        <Badge variant="default">
-                          <Package className="mr-1 h-3 w-3" />
-                          {formatFileSize(workflow.package_size)}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="default">
+                            <Package className="mr-1 h-3 w-3" />
+                            {formatFileSize(workflow.package_size)}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              const { data } = supabase.storage.from('workflows').getPublicUrl(workflow.package_path!);
+                              const link = document.createElement('a');
+                              link.href = data.publicUrl;
+                              link.download = workflow.package_name || 'package.zip';
+                              link.click();
+                            }}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </div>
                       ) : (
                         <Badge variant="secondary">无</Badge>
                       )}
