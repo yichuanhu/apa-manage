@@ -188,6 +188,7 @@ export type Database = {
           id: string
           is_public: boolean | null
           markdown_content: string | null
+          media_type: string | null
           title: string
           updated_at: string
           video_path: string | null
@@ -200,6 +201,7 @@ export type Database = {
           id?: string
           is_public?: boolean | null
           markdown_content?: string | null
+          media_type?: string | null
           title: string
           updated_at?: string
           video_path?: string | null
@@ -212,6 +214,7 @@ export type Database = {
           id?: string
           is_public?: boolean | null
           markdown_content?: string | null
+          media_type?: string | null
           title?: string
           updated_at?: string
           video_path?: string | null
