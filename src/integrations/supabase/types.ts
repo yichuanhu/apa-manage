@@ -225,6 +225,20 @@ export type Database = {
     }
     Functions: {
       compare_versions: { Args: { v1: string; v2: string }; Returns: number }
+      get_latest_package: {
+        Args: never
+        Returns: {
+          created_at: string
+          description: string
+          file_name: string
+          file_path: string
+          file_size: number
+          id: string
+          name: string
+          updated_at: string
+          version: string
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
