@@ -159,6 +159,54 @@ export type Database = {
           },
         ]
       }
+      user_flows: {
+        Row: {
+          client_version: string | null
+          created_at: string
+          flow_description: string | null
+          flow_id: string
+          flow_name: string
+          id: string
+          package_hash: string | null
+          package_size: number | null
+          package_url: string | null
+          platform: Database["public"]["Enums"]["platform_type"]
+          status: Database["public"]["Enums"]["user_flow_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          client_version?: string | null
+          created_at?: string
+          flow_description?: string | null
+          flow_id: string
+          flow_name: string
+          id?: string
+          package_hash?: string | null
+          package_size?: number | null
+          package_url?: string | null
+          platform?: Database["public"]["Enums"]["platform_type"]
+          status?: Database["public"]["Enums"]["user_flow_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          client_version?: string | null
+          created_at?: string
+          flow_description?: string | null
+          flow_id?: string
+          flow_name?: string
+          id?: string
+          package_hash?: string | null
+          package_size?: number | null
+          package_url?: string | null
+          platform?: Database["public"]["Enums"]["platform_type"]
+          status?: Database["public"]["Enums"]["user_flow_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -262,9 +310,13 @@ export type Database = {
         }
         Returns: boolean
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       app_role: "admin" | "user"
+      platform_type: "windows" | "mac" | "linux"
+      user_flow_status: "INIT" | "ANALYZED" | "SUPERSEDED"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -393,6 +445,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      platform_type: ["windows", "mac", "linux"],
+      user_flow_status: ["INIT", "ANALYZED", "SUPERSEDED"],
     },
   },
 } as const

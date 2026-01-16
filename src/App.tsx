@@ -13,6 +13,7 @@ import Roles from "./pages/Roles";
 import Menus from "./pages/Menus";
 import Packages from "./pages/Packages";
 import Workflows from "./pages/Workflows";
+import UserFlows from "./pages/UserFlows";
 import PublicWorkflows from "./pages/PublicWorkflows";
 import NotFound from "./pages/NotFound";
 
@@ -43,6 +44,7 @@ const App = () => (
               <Route path="menus" element={<Menus />} />
               <Route path="packages" element={<Packages />} />
               <Route path="workflows" element={<Workflows />} />
+              <Route path="user-flows" element={<UserFlows />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
