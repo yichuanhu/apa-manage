@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
@@ -16,17 +16,22 @@ export interface MenuItem {
 export function useMenus() {
   const [menus, setMenus] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const { userRole } = useAuth();
+  const { userRoles } = useAuth();
 
-  const fetchMenus = async () => {
+  const fetchMenus = useCallback(async () => {
+    if (userRoles.length === 0) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      // 获取当前用户角色可访问的菜单
+      // 获取当前用户所有角色可访问的菜单（去重）
       const { data: roleMenus } = await supabase
         .from('role_menus')
         .select('menu_id')
-        .eq('role', userRole || 'user');
+        .in('role', userRoles);
 
-      const menuIds = roleMenus?.map(rm => rm.menu_id) || [];
+      const menuIds = [...new Set(roleMenus?.map(rm => rm.menu_id) || [])];
 
       // 获取所有菜单
       const { data: allMenus } = await supabase
@@ -48,7 +53,7 @@ export function useMenus() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userRoles]);
 
   const buildMenuTree = (menus: MenuItem[]): MenuItem[] => {
     const menuMap = new Map<string, MenuItem>();
@@ -85,10 +90,10 @@ export function useMenus() {
   };
 
   useEffect(() => {
-    if (userRole) {
+    if (userRoles.length > 0) {
       fetchMenus();
     }
-  }, [userRole]);
+  }, [userRoles, fetchMenus]);
 
   return { menus, loading, refetch: fetchMenus };
 }
