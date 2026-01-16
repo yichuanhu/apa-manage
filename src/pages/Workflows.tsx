@@ -38,7 +38,7 @@ import {
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Loader2, Plus, Pencil, Trash2, Search, Eye, Upload, Video, Image } from 'lucide-react';
+import { Loader2, Plus, Pencil, Trash2, Search, Eye, Upload, Video, Image, Package } from 'lucide-react';
 
 interface Workflow {
   id: string;
@@ -52,6 +52,9 @@ interface Workflow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  package_path: string | null;
+  package_size: number | null;
+  package_name: string | null;
 }
 
 interface FormData {
@@ -65,6 +68,7 @@ type MediaType = 'video' | 'image';
 
 const MAX_VIDEO_SIZE = 200 * 1024 * 1024; // 200MB
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_PACKAGE_SIZE = 100 * 1024 * 1024; // 100MB
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 
@@ -88,6 +92,9 @@ interface WorkflowFormProps {
   uploadProgress: number;
   mediaType: MediaType;
   setMediaType: React.Dispatch<React.SetStateAction<MediaType>>;
+  selectedPackage: File | null;
+  packageInputRef: React.RefObject<HTMLInputElement>;
+  handlePackageChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 const WorkflowForm = ({
@@ -101,6 +108,9 @@ const WorkflowForm = ({
   uploadProgress,
   mediaType,
   setMediaType,
+  selectedPackage,
+  packageInputRef,
+  handlePackageChange,
 }: WorkflowFormProps) => (
   <div className="space-y-4">
     <div className="space-y-2">
@@ -213,6 +223,38 @@ const WorkflowForm = ({
         </TabsContent>
       </Tabs>
     </div>
+    <div className="space-y-2">
+      <Label htmlFor="package">流程包 (ZIP, 最大 100MB)</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          id="package"
+          type="file"
+          accept=".zip,application/zip,application/x-zip-compressed"
+          ref={packageInputRef}
+          onChange={handlePackageChange}
+          className="hidden"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => packageInputRef.current?.click()}
+        >
+          <Package className="mr-2 h-4 w-4" />
+          选择流程包
+        </Button>
+        {selectedPackage && (
+          <span className="text-sm text-muted-foreground">
+            {selectedPackage.name} ({formatFileSize(selectedPackage.size)})
+          </span>
+        )}
+        {isEdit && !selectedPackage && selectedWorkflow?.package_path && (
+          <span className="text-sm text-muted-foreground flex items-center">
+            <Package className="mr-1 h-4 w-4" />
+            已有流程包: {selectedWorkflow.package_name} ({formatFileSize(selectedWorkflow.package_size)})
+          </span>
+        )}
+      </div>
+    </div>
     <div className="flex items-center space-x-2">
       <Switch
         id="is_public"
@@ -254,6 +296,9 @@ export default function Workflows() {
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<MediaType>('video');
   const mediaInputRef = useRef<HTMLInputElement>(null);
+  const [selectedPackage, setSelectedPackage] = useState<File | null>(null);
+  const packageInputRef = useRef<HTMLInputElement>(null);
+  const [packageUrl, setPackageUrl] = useState<string | null>(null);
 
   const fetchWorkflows = async () => {
     try {
@@ -315,6 +360,33 @@ export default function Workflows() {
     }
   };
 
+  const validatePackage = (file: File): boolean => {
+    // 检查文件类型
+    const isZip = file.type === 'application/zip' || 
+                  file.type === 'application/x-zip-compressed' ||
+                  file.name.toLowerCase().endsWith('.zip');
+    if (!isZip) {
+      toast.error('只允许上传 .zip 格式的流程包');
+      return false;
+    }
+    // 检查文件大小
+    if (file.size > MAX_PACKAGE_SIZE) {
+      toast.error('流程包大小不能超过 100MB');
+      return false;
+    }
+    return true;
+  };
+
+  const handlePackageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && validatePackage(file)) {
+      setSelectedPackage(file);
+    } else {
+      e.target.value = '';
+      setSelectedPackage(null);
+    }
+  };
+
 
   const handleAdd = async () => {
     if (!formData.title) {
@@ -329,6 +401,9 @@ export default function Workflows() {
       let mediaPath = null;
       let mediaSize = null;
       let currentMediaType = null;
+      let pkgPath = null;
+      let pkgSize = null;
+      let pkgName = null;
 
       // 上传媒体文件（如果有）
       if (selectedMedia) {
@@ -347,7 +422,25 @@ export default function Workflows() {
         if (uploadError) throw uploadError;
         mediaSize = selectedMedia.size;
         currentMediaType = mediaType;
-        setUploadProgress(50);
+        setUploadProgress(33);
+      }
+
+      // 上传流程包（如果有）
+      if (selectedPackage) {
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.zip`;
+        pkgPath = `packages/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('workflows')
+          .upload(pkgPath, selectedPackage, {
+            cacheControl: '3600',
+            upsert: false,
+          });
+
+        if (uploadError) throw uploadError;
+        pkgSize = selectedPackage.size;
+        pkgName = selectedPackage.name;
+        setUploadProgress(66);
       }
 
       // 创建数据库记录
@@ -360,12 +453,18 @@ export default function Workflows() {
         markdown_content: formData.markdown_content || null,
         is_public: formData.is_public,
         created_by: user?.id,
+        package_path: pkgPath,
+        package_size: pkgSize,
+        package_name: pkgName,
       });
 
       if (dbError) {
         // 如果数据库插入失败，删除已上传的文件
-        if (mediaPath) {
-          await supabase.storage.from('workflows').remove([mediaPath]);
+        const filesToRemove = [];
+        if (mediaPath) filesToRemove.push(mediaPath);
+        if (pkgPath) filesToRemove.push(pkgPath);
+        if (filesToRemove.length > 0) {
+          await supabase.storage.from('workflows').remove(filesToRemove);
         }
         throw dbError;
       }
@@ -394,6 +493,9 @@ export default function Workflows() {
       let mediaPath = selectedWorkflow.video_path;
       let mediaSize = selectedWorkflow.video_size;
       let currentMediaType = selectedWorkflow.media_type;
+      let pkgPath = selectedWorkflow.package_path;
+      let pkgSize = selectedWorkflow.package_size;
+      let pkgName = selectedWorkflow.package_name;
 
       // 上传新媒体文件（如果有）
       if (selectedMedia) {
@@ -417,7 +519,30 @@ export default function Workflows() {
         if (uploadError) throw uploadError;
         mediaSize = selectedMedia.size;
         currentMediaType = mediaType;
-        setUploadProgress(50);
+        setUploadProgress(33);
+      }
+
+      // 上传新流程包（如果有）
+      if (selectedPackage) {
+        // 删除旧文件
+        if (selectedWorkflow.package_path) {
+          await supabase.storage.from('workflows').remove([selectedWorkflow.package_path]);
+        }
+
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.zip`;
+        pkgPath = `packages/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('workflows')
+          .upload(pkgPath, selectedPackage, {
+            cacheControl: '3600',
+            upsert: false,
+          });
+
+        if (uploadError) throw uploadError;
+        pkgSize = selectedPackage.size;
+        pkgName = selectedPackage.name;
+        setUploadProgress(66);
       }
 
       // 更新数据库记录
@@ -431,6 +556,9 @@ export default function Workflows() {
           media_type: currentMediaType,
           markdown_content: formData.markdown_content || null,
           is_public: formData.is_public,
+          package_path: pkgPath,
+          package_size: pkgSize,
+          package_name: pkgName,
         })
         .eq('id', selectedWorkflow.id);
 
@@ -455,9 +583,16 @@ export default function Workflows() {
 
     setSubmitting(true);
     try {
-      // 删除存储中的媒体文件
+      // 删除存储中的文件
+      const filesToRemove = [];
       if (selectedWorkflow.video_path) {
-        await supabase.storage.from('workflows').remove([selectedWorkflow.video_path]);
+        filesToRemove.push(selectedWorkflow.video_path);
+      }
+      if (selectedWorkflow.package_path) {
+        filesToRemove.push(selectedWorkflow.package_path);
+      }
+      if (filesToRemove.length > 0) {
+        await supabase.storage.from('workflows').remove(filesToRemove);
       }
 
       // 删除数据库记录
@@ -486,8 +621,12 @@ export default function Workflows() {
     });
     setSelectedMedia(null);
     setMediaType('video');
+    setSelectedPackage(null);
     if (mediaInputRef.current) {
       mediaInputRef.current.value = '';
+    }
+    if (packageInputRef.current) {
+      packageInputRef.current.value = '';
     }
   };
 
@@ -501,6 +640,7 @@ export default function Workflows() {
     });
     setSelectedMedia(null);
     setMediaType((workflow.media_type as MediaType) || 'video');
+    setSelectedPackage(null);
     setIsEditDialogOpen(true);
   };
 
@@ -519,6 +659,14 @@ export default function Workflows() {
       setMediaUrl(data.publicUrl);
     } else {
       setMediaUrl(null);
+    }
+
+    // 获取流程包URL
+    if (workflow.package_path) {
+      const { data } = supabase.storage.from('workflows').getPublicUrl(workflow.package_path);
+      setPackageUrl(data.publicUrl);
+    } else {
+      setPackageUrl(null);
     }
 
     setIsViewDialogOpen(true);
@@ -583,6 +731,7 @@ export default function Workflows() {
                 <TableHead>标题</TableHead>
                 <TableHead>描述</TableHead>
                 <TableHead>媒体</TableHead>
+                <TableHead>流程包</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>创建时间</TableHead>
                 <TableHead className="text-right">操作</TableHead>
@@ -591,7 +740,7 @@ export default function Workflows() {
             <TableBody>
               {filteredWorkflows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     暂无流程数据
                   </TableCell>
                 </TableRow>
@@ -614,6 +763,16 @@ export default function Workflows() {
                         </Badge>
                       ) : (
                         <Badge variant="secondary">无媒体</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {workflow.package_path ? (
+                        <Badge variant="default">
+                          <Package className="mr-1 h-3 w-3" />
+                          {formatFileSize(workflow.package_size)}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">无</Badge>
                       )}
                     </TableCell>
                     <TableCell>
@@ -672,6 +831,9 @@ export default function Workflows() {
             uploadProgress={uploadProgress}
             mediaType={mediaType}
             setMediaType={setMediaType}
+            selectedPackage={selectedPackage}
+            packageInputRef={packageInputRef}
+            handlePackageChange={handlePackageChange}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
@@ -703,6 +865,9 @@ export default function Workflows() {
             uploadProgress={uploadProgress}
             mediaType={mediaType}
             setMediaType={setMediaType}
+            selectedPackage={selectedPackage}
+            packageInputRef={packageInputRef}
+            handlePackageChange={handlePackageChange}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
@@ -729,6 +894,7 @@ export default function Workflows() {
                 {selectedWorkflow?.media_type === 'image' ? '图片' : '视频'}
               </TabsTrigger>
               <TabsTrigger value="markdown">文档</TabsTrigger>
+              <TabsTrigger value="package">流程包</TabsTrigger>
             </TabsList>
             <TabsContent value="media" className="mt-4">
               {mediaUrl ? (
@@ -757,6 +923,32 @@ export default function Workflows() {
                   <p className="text-muted-foreground">暂无文档内容</p>
                 )}
               </div>
+            </TabsContent>
+            <TabsContent value="package" className="mt-4">
+              {packageUrl && selectedWorkflow?.package_name ? (
+                <div className="p-4 border rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-8 w-8 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">{selectedWorkflow.package_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatFileSize(selectedWorkflow.package_size)}
+                        </p>
+                      </div>
+                    </div>
+                    <Button asChild>
+                      <a href={packageUrl} download={selectedWorkflow.package_name}>
+                        下载流程包
+                      </a>
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-64 bg-muted rounded-lg">
+                  <p className="text-muted-foreground">暂无流程包</p>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
           <DialogFooter>

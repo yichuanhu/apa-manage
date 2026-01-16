@@ -189,6 +189,9 @@ export type Database = {
           is_public: boolean | null
           markdown_content: string | null
           media_type: string | null
+          package_name: string | null
+          package_path: string | null
+          package_size: number | null
           title: string
           updated_at: string
           video_path: string | null
@@ -202,6 +205,9 @@ export type Database = {
           is_public?: boolean | null
           markdown_content?: string | null
           media_type?: string | null
+          package_name?: string | null
+          package_path?: string | null
+          package_size?: number | null
           title: string
           updated_at?: string
           video_path?: string | null
@@ -215,6 +221,9 @@ export type Database = {
           is_public?: boolean | null
           markdown_content?: string | null
           media_type?: string | null
+          package_name?: string | null
+          package_path?: string | null
+          package_size?: number | null
           title?: string
           updated_at?: string
           video_path?: string | null
