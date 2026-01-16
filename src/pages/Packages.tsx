@@ -61,7 +61,6 @@ export default function Packages() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
   const [formData, setFormData] = useState({
-    name: '',
     version: '',
     description: '',
   });
@@ -140,19 +139,18 @@ export default function Packages() {
     return 0;
   };
 
-  // 获取同名安装包的最高版本
-  const getMaxVersion = (packageName: string): string | null => {
-    const sameNamePackages = packages.filter(p => p.name === packageName);
-    if (sameNamePackages.length === 0) return null;
+  // 获取所有安装包的最高版本
+  const getMaxVersion = (): string | null => {
+    if (packages.length === 0) return null;
     
-    return sameNamePackages.reduce((maxVer, pkg) => {
+    return packages.reduce((maxVer, pkg) => {
       return compareVersions(pkg.version, maxVer) > 0 ? pkg.version : maxVer;
-    }, sameNamePackages[0].version);
+    }, packages[0].version);
   };
 
   const handleAdd = async () => {
-    if (!formData.name || !formData.version || !selectedFile) {
-      toast.error('请填写所有必填字段并选择文件');
+    if (!formData.version || !selectedFile) {
+      toast.error('请填写版本号并选择文件');
       return;
     }
 
@@ -163,7 +161,7 @@ export default function Packages() {
     }
 
     // 验证版本号必须递增
-    const maxVersion = getMaxVersion(formData.name);
+    const maxVersion = getMaxVersion();
     if (maxVersion && compareVersions(formData.version, maxVersion) <= 0) {
       toast.error(`版本号必须大于当前最高版本 ${maxVersion}`);
       return;
@@ -192,7 +190,7 @@ export default function Packages() {
 
       // 创建数据库记录
       const { error: dbError } = await supabase.from('packages').insert({
-        name: formData.name,
+        name: 'APA', // 固定应用名称
         version: formData.version,
         description: formData.description || null,
         file_path: filePath,
@@ -232,13 +230,11 @@ export default function Packages() {
 
     // 如果版本号变更，验证必须递增
     if (formData.version !== selectedPackage.version) {
-      const sameNamePackages = packages.filter(
-        p => p.name === formData.name && p.id !== selectedPackage.id
-      );
-      const maxVersion = sameNamePackages.length > 0
-        ? sameNamePackages.reduce((maxVer, pkg) => 
+      const otherPackages = packages.filter(p => p.id !== selectedPackage.id);
+      const maxVersion = otherPackages.length > 0
+        ? otherPackages.reduce((maxVer, pkg) => 
             compareVersions(pkg.version, maxVer) > 0 ? pkg.version : maxVer, 
-            sameNamePackages[0].version
+            otherPackages[0].version
           )
         : null;
       
@@ -253,7 +249,6 @@ export default function Packages() {
       const { error } = await supabase
         .from('packages')
         .update({
-          name: formData.name,
           version: formData.version,
           description: formData.description || null,
         })
@@ -320,7 +315,7 @@ export default function Packages() {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', version: '', description: '' });
+    setFormData({ version: '', description: '' });
     setSelectedFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -330,7 +325,6 @@ export default function Packages() {
   const openEditDialog = (pkg: Package) => {
     setSelectedPackage(pkg);
     setFormData({
-      name: pkg.name,
       version: pkg.version,
       description: pkg.description || '',
     });
@@ -344,8 +338,8 @@ export default function Packages() {
 
   const filteredPackages = packages.filter(
     (pkg) =>
-      pkg.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      pkg.version.toLowerCase().includes(searchTerm.toLowerCase())
+      pkg.version.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      pkg.file_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -392,7 +386,6 @@ export default function Packages() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>名称</TableHead>
                 <TableHead>版本</TableHead>
                 <TableHead>文件名</TableHead>
                 <TableHead>大小</TableHead>
@@ -403,15 +396,14 @@ export default function Packages() {
             <TableBody>
               {filteredPackages.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
                     暂无安装包数据
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredPackages.map((pkg) => (
                   <TableRow key={pkg.id}>
-                    <TableCell className="font-medium">{pkg.name}</TableCell>
-                    <TableCell>{pkg.version}</TableCell>
+                    <TableCell className="font-medium">{pkg.version}</TableCell>
                     <TableCell className="max-w-[200px] truncate">{pkg.file_name}</TableCell>
                     <TableCell>{formatFileSize(pkg.file_size)}</TableCell>
                     <TableCell>
@@ -458,14 +450,6 @@ export default function Packages() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">名称</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
             <div className="space-y-2">
               <Label htmlFor="version">版本</Label>
               <Input
@@ -539,14 +523,6 @@ export default function Packages() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-name">名称</Label>
-              <Input
-                id="edit-name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="edit-version">版本</Label>
               <Input
                 id="edit-version"
@@ -581,7 +557,7 @@ export default function Packages() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除安装包 "{selectedPackage?.name}" 吗？此操作无法撤销。
+              确定要删除安装包 v{selectedPackage?.version} 吗？此操作无法撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
