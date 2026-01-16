@@ -38,7 +38,7 @@ import {
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Loader2, Plus, Pencil, Trash2, Search, Eye, Upload, Video } from 'lucide-react';
+import { Loader2, Plus, Pencil, Trash2, Search, Eye, Upload, Video, Image } from 'lucide-react';
 
 interface Workflow {
   id: string;
@@ -46,6 +46,7 @@ interface Workflow {
   description: string | null;
   video_path: string | null;
   video_size: number | null;
+  media_type: string | null;
   markdown_content: string | null;
   is_public: boolean;
   created_by: string | null;
@@ -60,7 +61,12 @@ interface FormData {
   is_public: boolean;
 }
 
+type MediaType = 'video' | 'image';
+
 const MAX_VIDEO_SIZE = 200 * 1024 * 1024; // 200MB
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 
 const formatFileSize = (bytes: number | null): string => {
   if (!bytes) return '-';
@@ -75,22 +81,26 @@ interface WorkflowFormProps {
   isEdit?: boolean;
   formData: FormData;
   setFormData: React.Dispatch<React.SetStateAction<FormData>>;
-  selectedVideo: File | null;
+  selectedMedia: File | null;
   selectedWorkflow: Workflow | null;
-  videoInputRef: React.RefObject<HTMLInputElement>;
-  handleVideoChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  mediaInputRef: React.RefObject<HTMLInputElement>;
+  handleMediaChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   uploadProgress: number;
+  mediaType: MediaType;
+  setMediaType: React.Dispatch<React.SetStateAction<MediaType>>;
 }
 
 const WorkflowForm = ({
   isEdit = false,
   formData,
   setFormData,
-  selectedVideo,
+  selectedMedia,
   selectedWorkflow,
-  videoInputRef,
-  handleVideoChange,
+  mediaInputRef,
+  handleMediaChange,
   uploadProgress,
+  mediaType,
+  setMediaType,
 }: WorkflowFormProps) => (
   <div className="space-y-4">
     <div className="space-y-2">
@@ -110,33 +120,68 @@ const WorkflowForm = ({
       />
     </div>
     <div className="space-y-2">
-      <Label htmlFor="video">视频文件 (MP4, 最大 200MB)</Label>
+      <Label>媒体类型</Label>
+      <div className="flex items-center gap-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="mediaType"
+            value="video"
+            checked={mediaType === 'video'}
+            onChange={() => setMediaType('video')}
+            className="w-4 h-4"
+          />
+          <Video className="h-4 w-4" />
+          <span>视频 (MP4, 最大 200MB)</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="mediaType"
+            value="image"
+            checked={mediaType === 'image'}
+            onChange={() => setMediaType('image')}
+            className="w-4 h-4"
+          />
+          <Image className="h-4 w-4" />
+          <span>图片 (JPG/PNG/GIF/WebP, 最大 10MB)</span>
+        </label>
+      </div>
+    </div>
+    <div className="space-y-2">
+      <Label htmlFor="media">
+        {mediaType === 'video' ? '视频文件' : '图片文件'}
+      </Label>
       <div className="flex items-center gap-2">
         <Input
-          id="video"
+          id="media"
           type="file"
-          accept="video/mp4,.mp4"
-          ref={videoInputRef}
-          onChange={handleVideoChange}
+          accept={mediaType === 'video' ? 'video/mp4,.mp4' : ALLOWED_IMAGE_EXTENSIONS.join(',')}
+          ref={mediaInputRef}
+          onChange={handleMediaChange}
           className="hidden"
         />
         <Button
           type="button"
           variant="outline"
-          onClick={() => videoInputRef.current?.click()}
+          onClick={() => mediaInputRef.current?.click()}
         >
           <Upload className="mr-2 h-4 w-4" />
-          选择视频
+          {mediaType === 'video' ? '选择视频' : '选择图片'}
         </Button>
-        {selectedVideo && (
+        {selectedMedia && (
           <span className="text-sm text-muted-foreground">
-            {selectedVideo.name} ({formatFileSize(selectedVideo.size)})
+            {selectedMedia.name} ({formatFileSize(selectedMedia.size)})
           </span>
         )}
-        {isEdit && !selectedVideo && selectedWorkflow?.video_path && (
+        {isEdit && !selectedMedia && selectedWorkflow?.video_path && (
           <span className="text-sm text-muted-foreground flex items-center">
-            <Video className="mr-1 h-4 w-4" />
-            已有视频 ({formatFileSize(selectedWorkflow.video_size)})
+            {selectedWorkflow.media_type === 'image' ? (
+              <Image className="mr-1 h-4 w-4" />
+            ) : (
+              <Video className="mr-1 h-4 w-4" />
+            )}
+            已有{selectedWorkflow.media_type === 'image' ? '图片' : '视频'} ({formatFileSize(selectedWorkflow.video_size)})
           </span>
         )}
       </div>
@@ -203,11 +248,12 @@ export default function Workflows() {
     markdown_content: '',
     is_public: false,
   });
-  const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
+  const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<MediaType>('video');
+  const mediaInputRef = useRef<HTMLInputElement>(null);
 
   const fetchWorkflows = async () => {
     try {
@@ -230,29 +276,42 @@ export default function Workflows() {
     fetchWorkflows();
   }, []);
 
-  const validateVideo = (file: File): boolean => {
-    // 检查文件类型
-    if (!file.type.includes('video/mp4') && !file.name.toLowerCase().endsWith('.mp4')) {
-      toast.error('只允许上传 .mp4 视频文件');
-      return false;
+  const validateMedia = (file: File, type: MediaType): boolean => {
+    if (type === 'video') {
+      // 检查视频文件类型
+      if (!file.type.includes('video/mp4') && !file.name.toLowerCase().endsWith('.mp4')) {
+        toast.error('只允许上传 .mp4 视频文件');
+        return false;
+      }
+      // 检查视频文件大小
+      if (file.size > MAX_VIDEO_SIZE) {
+        toast.error('视频大小不能超过 200MB');
+        return false;
+      }
+    } else {
+      // 检查图片文件类型
+      const isValidType = ALLOWED_IMAGE_TYPES.includes(file.type) || 
+        ALLOWED_IMAGE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext));
+      if (!isValidType) {
+        toast.error('只允许上传 JPG、PNG、GIF、WebP、BMP 格式的图片');
+        return false;
+      }
+      // 检查图片文件大小
+      if (file.size > MAX_IMAGE_SIZE) {
+        toast.error('图片大小不能超过 10MB');
+        return false;
+      }
     }
-
-    // 检查文件大小
-    if (file.size > MAX_VIDEO_SIZE) {
-      toast.error('视频大小不能超过 200MB');
-      return false;
-    }
-
     return true;
   };
 
-  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && validateVideo(file)) {
-      setSelectedVideo(file);
+    if (file && validateMedia(file, mediaType)) {
+      setSelectedMedia(file);
     } else {
       e.target.value = '';
-      setSelectedVideo(null);
+      setSelectedMedia(null);
     }
   };
 
@@ -267,24 +326,27 @@ export default function Workflows() {
     setUploadProgress(0);
 
     try {
-      let videoPath = null;
-      let videoSize = null;
+      let mediaPath = null;
+      let mediaSize = null;
+      let currentMediaType = null;
 
-      // 上传视频（如果有）
-      if (selectedVideo) {
-        const fileExt = selectedVideo.name.split('.').pop();
+      // 上传媒体文件（如果有）
+      if (selectedMedia) {
+        const fileExt = selectedMedia.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        videoPath = `videos/${fileName}`;
+        const folder = mediaType === 'video' ? 'videos' : 'images';
+        mediaPath = `${folder}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from('workflows')
-          .upload(videoPath, selectedVideo, {
+          .upload(mediaPath, selectedMedia, {
             cacheControl: '3600',
             upsert: false,
           });
 
         if (uploadError) throw uploadError;
-        videoSize = selectedVideo.size;
+        mediaSize = selectedMedia.size;
+        currentMediaType = mediaType;
         setUploadProgress(50);
       }
 
@@ -292,17 +354,18 @@ export default function Workflows() {
       const { error: dbError } = await supabase.from('workflows').insert({
         title: formData.title,
         description: formData.description || null,
-        video_path: videoPath,
-        video_size: videoSize,
+        video_path: mediaPath,
+        video_size: mediaSize,
+        media_type: currentMediaType,
         markdown_content: formData.markdown_content || null,
         is_public: formData.is_public,
         created_by: user?.id,
       });
 
       if (dbError) {
-        // 如果数据库插入失败，删除已上传的视频
-        if (videoPath) {
-          await supabase.storage.from('workflows').remove([videoPath]);
+        // 如果数据库插入失败，删除已上传的文件
+        if (mediaPath) {
+          await supabase.storage.from('workflows').remove([mediaPath]);
         }
         throw dbError;
       }
@@ -328,29 +391,32 @@ export default function Workflows() {
     setUploadProgress(0);
 
     try {
-      let videoPath = selectedWorkflow.video_path;
-      let videoSize = selectedWorkflow.video_size;
+      let mediaPath = selectedWorkflow.video_path;
+      let mediaSize = selectedWorkflow.video_size;
+      let currentMediaType = selectedWorkflow.media_type;
 
-      // 上传新视频（如果有）
-      if (selectedVideo) {
-        // 删除旧视频
+      // 上传新媒体文件（如果有）
+      if (selectedMedia) {
+        // 删除旧文件
         if (selectedWorkflow.video_path) {
           await supabase.storage.from('workflows').remove([selectedWorkflow.video_path]);
         }
 
-        const fileExt = selectedVideo.name.split('.').pop();
+        const fileExt = selectedMedia.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        videoPath = `videos/${fileName}`;
+        const folder = mediaType === 'video' ? 'videos' : 'images';
+        mediaPath = `${folder}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from('workflows')
-          .upload(videoPath, selectedVideo, {
+          .upload(mediaPath, selectedMedia, {
             cacheControl: '3600',
             upsert: false,
           });
 
         if (uploadError) throw uploadError;
-        videoSize = selectedVideo.size;
+        mediaSize = selectedMedia.size;
+        currentMediaType = mediaType;
         setUploadProgress(50);
       }
 
@@ -360,8 +426,9 @@ export default function Workflows() {
         .update({
           title: formData.title,
           description: formData.description || null,
-          video_path: videoPath,
-          video_size: videoSize,
+          video_path: mediaPath,
+          video_size: mediaSize,
+          media_type: currentMediaType,
           markdown_content: formData.markdown_content || null,
           is_public: formData.is_public,
         })
@@ -388,7 +455,7 @@ export default function Workflows() {
 
     setSubmitting(true);
     try {
-      // 删除存储中的视频
+      // 删除存储中的媒体文件
       if (selectedWorkflow.video_path) {
         await supabase.storage.from('workflows').remove([selectedWorkflow.video_path]);
       }
@@ -417,9 +484,10 @@ export default function Workflows() {
       markdown_content: '',
       is_public: false,
     });
-    setSelectedVideo(null);
-    if (videoInputRef.current) {
-      videoInputRef.current.value = '';
+    setSelectedMedia(null);
+    setMediaType('video');
+    if (mediaInputRef.current) {
+      mediaInputRef.current.value = '';
     }
   };
 
@@ -431,7 +499,8 @@ export default function Workflows() {
       markdown_content: workflow.markdown_content || '',
       is_public: workflow.is_public,
     });
-    setSelectedVideo(null);
+    setSelectedMedia(null);
+    setMediaType((workflow.media_type as MediaType) || 'video');
     setIsEditDialogOpen(true);
   };
 
@@ -444,12 +513,12 @@ export default function Workflows() {
       is_public: workflow.is_public,
     });
 
-    // 获取视频URL
+    // 获取媒体URL
     if (workflow.video_path) {
       const { data } = supabase.storage.from('workflows').getPublicUrl(workflow.video_path);
-      setVideoUrl(data.publicUrl);
+      setMediaUrl(data.publicUrl);
     } else {
-      setVideoUrl(null);
+      setMediaUrl(null);
     }
 
     setIsViewDialogOpen(true);
@@ -513,7 +582,7 @@ export default function Workflows() {
               <TableRow>
                 <TableHead>标题</TableHead>
                 <TableHead>描述</TableHead>
-                <TableHead>视频</TableHead>
+                <TableHead>媒体</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>创建时间</TableHead>
                 <TableHead className="text-right">操作</TableHead>
@@ -536,11 +605,15 @@ export default function Workflows() {
                     <TableCell>
                       {workflow.video_path ? (
                         <Badge variant="default">
-                          <Video className="mr-1 h-3 w-3" />
+                          {workflow.media_type === 'image' ? (
+                            <Image className="mr-1 h-3 w-3" />
+                          ) : (
+                            <Video className="mr-1 h-3 w-3" />
+                          )}
                           {formatFileSize(workflow.video_size)}
                         </Badge>
                       ) : (
-                        <Badge variant="secondary">无视频</Badge>
+                        <Badge variant="secondary">无媒体</Badge>
                       )}
                     </TableCell>
                     <TableCell>
@@ -592,11 +665,13 @@ export default function Workflows() {
           <WorkflowForm
             formData={formData}
             setFormData={setFormData}
-            selectedVideo={selectedVideo}
+            selectedMedia={selectedMedia}
             selectedWorkflow={selectedWorkflow}
-            videoInputRef={videoInputRef}
-            handleVideoChange={handleVideoChange}
+            mediaInputRef={mediaInputRef}
+            handleMediaChange={handleMediaChange}
             uploadProgress={uploadProgress}
+            mediaType={mediaType}
+            setMediaType={setMediaType}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
@@ -621,11 +696,13 @@ export default function Workflows() {
             isEdit
             formData={formData}
             setFormData={setFormData}
-            selectedVideo={selectedVideo}
+            selectedMedia={selectedMedia}
             selectedWorkflow={selectedWorkflow}
-            videoInputRef={videoInputRef}
-            handleVideoChange={handleVideoChange}
+            mediaInputRef={mediaInputRef}
+            handleMediaChange={handleMediaChange}
             uploadProgress={uploadProgress}
+            mediaType={mediaType}
+            setMediaType={setMediaType}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
@@ -646,19 +723,29 @@ export default function Workflows() {
             <DialogTitle>{selectedWorkflow?.title}</DialogTitle>
             <DialogDescription>{selectedWorkflow?.description}</DialogDescription>
           </DialogHeader>
-          <Tabs defaultValue="video" className="w-full">
+          <Tabs defaultValue="media" className="w-full">
             <TabsList>
-              <TabsTrigger value="video">视频</TabsTrigger>
+              <TabsTrigger value="media">
+                {selectedWorkflow?.media_type === 'image' ? '图片' : '视频'}
+              </TabsTrigger>
               <TabsTrigger value="markdown">文档</TabsTrigger>
             </TabsList>
-            <TabsContent value="video" className="mt-4">
-              {videoUrl ? (
-                <video controls className="w-full rounded-lg" src={videoUrl}>
-                  您的浏览器不支持视频播放
-                </video>
+            <TabsContent value="media" className="mt-4">
+              {mediaUrl ? (
+                selectedWorkflow?.media_type === 'image' ? (
+                  <img 
+                    src={mediaUrl} 
+                    alt={selectedWorkflow?.title} 
+                    className="w-full rounded-lg max-h-[500px] object-contain"
+                  />
+                ) : (
+                  <video controls className="w-full rounded-lg" src={mediaUrl}>
+                    您的浏览器不支持视频播放
+                  </video>
+                )
               ) : (
                 <div className="flex items-center justify-center h-64 bg-muted rounded-lg">
-                  <p className="text-muted-foreground">暂无视频</p>
+                  <p className="text-muted-foreground">暂无媒体文件</p>
                 </div>
               )}
             </TabsContent>

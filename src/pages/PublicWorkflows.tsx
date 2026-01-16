@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, Video, FileText, Eye } from 'lucide-react';
+import { Loader2, Search, Video, FileText, Eye, Image } from 'lucide-react';
 
 interface Workflow {
   id: string;
@@ -22,6 +22,7 @@ interface Workflow {
   description: string | null;
   video_path: string | null;
   video_size: number | null;
+  media_type: string | null;
   markdown_content: string | null;
   created_at: string;
 }
@@ -32,13 +33,13 @@ export default function PublicWorkflows() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
 
   const fetchPublicWorkflows = async () => {
     try {
       const { data, error } = await supabase
         .from('workflows')
-        .select('id, title, description, video_path, video_size, markdown_content, created_at')
+        .select('id, title, description, video_path, video_size, media_type, markdown_content, created_at')
         .eq('is_public', true)
         .order('created_at', { ascending: false });
 
@@ -67,12 +68,12 @@ export default function PublicWorkflows() {
   const openViewDialog = async (workflow: Workflow) => {
     setSelectedWorkflow(workflow);
 
-    // 获取视频URL
+    // 获取媒体URL
     if (workflow.video_path) {
       const { data } = supabase.storage.from('workflows').getPublicUrl(workflow.video_path);
-      setVideoUrl(data.publicUrl);
+      setMediaUrl(data.publicUrl);
     } else {
-      setVideoUrl(null);
+      setMediaUrl(null);
     }
 
     setIsViewDialogOpen(true);
@@ -139,8 +140,12 @@ export default function PublicWorkflows() {
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     {workflow.video_path && (
                       <Badge variant="secondary" className="gap-1">
-                        <Video className="h-3 w-3" />
-                        视频
+                        {workflow.media_type === 'image' ? (
+                          <Image className="h-3 w-3" />
+                        ) : (
+                          <Video className="h-3 w-3" />
+                        )}
+                        {workflow.media_type === 'image' ? '图片' : '视频'}
                       </Badge>
                     )}
                     {workflow.markdown_content && (
@@ -166,19 +171,29 @@ export default function PublicWorkflows() {
               <DialogTitle>{selectedWorkflow?.title}</DialogTitle>
               <DialogDescription>{selectedWorkflow?.description}</DialogDescription>
             </DialogHeader>
-            <Tabs defaultValue="video" className="w-full">
+            <Tabs defaultValue="media" className="w-full">
               <TabsList>
-                <TabsTrigger value="video">视频</TabsTrigger>
+                <TabsTrigger value="media">
+                  {selectedWorkflow?.media_type === 'image' ? '图片' : '视频'}
+                </TabsTrigger>
                 <TabsTrigger value="markdown">文档</TabsTrigger>
               </TabsList>
-              <TabsContent value="video" className="mt-4">
-                {videoUrl ? (
-                  <video controls className="w-full rounded-lg" src={videoUrl}>
-                    您的浏览器不支持视频播放
-                  </video>
+              <TabsContent value="media" className="mt-4">
+                {mediaUrl ? (
+                  selectedWorkflow?.media_type === 'image' ? (
+                    <img 
+                      src={mediaUrl} 
+                      alt={selectedWorkflow?.title} 
+                      className="w-full rounded-lg max-h-[500px] object-contain"
+                    />
+                  ) : (
+                    <video controls className="w-full rounded-lg" src={mediaUrl}>
+                      您的浏览器不支持视频播放
+                    </video>
+                  )
                 ) : (
                   <div className="flex items-center justify-center h-64 bg-muted rounded-lg">
-                    <p className="text-muted-foreground">暂无视频</p>
+                    <p className="text-muted-foreground">暂无媒体文件</p>
                   </div>
                 )}
               </TabsContent>
